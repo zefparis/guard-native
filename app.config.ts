@@ -62,6 +62,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     'expo-secure-store',
+    [
+      '@siteed/audio-studio',
+      {
+        enableNotifications: false,
+        enableBackgroundAudio: false,
+        enablePhoneStateHandling: false,
+        enableDeviceDetection: false,
+        iosConfig: {
+          microphoneUsageDescription:
+            'GuardNative needs microphone access for vocal cognitive tests and liveness verification.',
+        },
+      },
+    ],
   ],
 
   experiments: {

@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/ui": "~57.0.7",
     "@react-native-async-storage/async-storage": "^3.1.1",
+    "@siteed/audio-studio": "^3.2.1",
     "expo": "~57.0.8",
     "expo-constants": "~57.0.7",
     "expo-device": "~57.0.1",
