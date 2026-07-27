@@ -16,6 +16,7 @@
 
 import {
     PULSEGUARD_API_KEY,
+    PULSEGUARD_API_PATH,
     PULSEGUARD_ENROLLMENT_PATH,
     PULSEGUARD_ENROLLMENT_TEST_PROGRESS_PATH,
     PULSEGUARD_LINK_CONFIG_PATH,
@@ -128,6 +129,40 @@ export async function fetchLinkConfig(
   const url = `${PULSEGUARD_LINK_CONFIG_PATH}?token=${encodeURIComponent(token)}`;
   const res = await pgFetch(url, { method: 'GET' });
   return res.json() as Promise<PulseGuardLinkConfig>;
+}
+
+// ─── Snapshot submission (periodic checks) ─────────────────────────
+
+export interface PulseGuardSnapshotPayload {
+  hcs_session_public_id: string;
+  source: typeof PULSEGUARD_SOURCE;
+  link_token: string;
+  pulse_guard: {
+    version: string;
+    snapshot_at: string;
+    started_at: string;
+    signals: Record<string, unknown>;
+    device_motion_state?: 'stationary' | 'carried' | 'unknown';
+    background_heartbeat?: boolean;
+    trigger_reason?: 'periodic' | 'inactivity_retest';
+  };
+}
+
+export interface PulseGuardSnapshotResponse {
+  ok: boolean;
+  received: boolean;
+  snapshot_seq?: number;
+  message?: string;
+}
+
+export async function submitPulseGuardSnapshot(
+  payload: PulseGuardSnapshotPayload,
+): Promise<PulseGuardSnapshotResponse> {
+  const res = await pgFetch(PULSEGUARD_API_PATH, {
+    method: 'POST',
+    body: payload,
+  });
+  return res.json() as Promise<PulseGuardSnapshotResponse>;
 }
 
 // ─── Enrollment types ──────────────────────────────────────────────

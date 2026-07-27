@@ -14,6 +14,7 @@ import { getLinkToken, saveLinkToken } from '@/api/linkToken';
 import type { PulseGuardLinkConfig } from '@/pulseguard/api';
 import { fetchLinkConfig, PulseGuardApiError } from '@/pulseguard/api';
 import { CognitiveEnrollment } from '@/screens/CognitiveEnrollment';
+import { WaitingScreen } from '@/screens/WaitingScreen';
 
 function extractToken(input: string): string {
   const trimmed = input.trim();
@@ -38,6 +39,8 @@ export default function HomeScreen() {
   const [testState, setTestState] = useState<TestState>({ status: 'idle' });
   const [storedToken, setStoredToken] = useState<string | null>(null);
   const [enrollmentActive, setEnrollmentActive] = useState(false);
+  const [waitingActive, setWaitingActive] = useState(false);
+  const [retestActive, setRetestActive] = useState(false);
 
   const handleResolve = useCallback(async () => {
     const resolved = extractToken(token);
@@ -79,11 +82,48 @@ export default function HomeScreen() {
     }
   }, []);
 
+  // ── Enrollment → on success, transition to waiting (not back to token screen) ──
   if (enrollmentActive && storedToken) {
     return (
       <CognitiveEnrollment
         linkToken={storedToken}
-        onComplete={() => setEnrollmentActive(false)}
+        onComplete={() => {
+          setEnrollmentActive(false);
+          setWaitingActive(true);
+        }}
+      />
+    );
+  }
+
+  // ── Cognitive re-test (inactivity-triggered) → on complete, return to waiting ──
+  if (retestActive && storedToken) {
+    return (
+      <CognitiveEnrollment
+        linkToken={storedToken}
+        onComplete={() => {
+          setRetestActive(false);
+          setWaitingActive(true);
+        }}
+      />
+    );
+  }
+
+  // ── Waiting / monitoring mode ──
+  if (waitingActive && storedToken) {
+    // TEMP_TEST: override to 30s / 5s for device testing. Remove before production.
+    const TEMP_TEST_CHECK_FREQ = 30_000;
+    const TEMP_TEST_CAPTURE_WIN = 5;
+    const checkFreq = TEMP_TEST_CHECK_FREQ;
+    const captureWin = TEMP_TEST_CAPTURE_WIN;
+    return (
+      <WaitingScreen
+        linkToken={storedToken}
+        checkFrequencyMs={checkFreq}
+        captureWindowSec={captureWin}
+        onRetestRequired={() => {
+          setWaitingActive(false);
+          setRetestActive(true);
+        }}
       />
     );
   }
