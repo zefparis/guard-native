@@ -19,6 +19,7 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
+import type { AudioAnalysis } from '@siteed/audio-studio';
 import { AudioStudioModule, useAudioRecorder } from '@siteed/audio-studio';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
@@ -41,8 +42,10 @@ import type {
 
 // ─── Constants (matching pulseguard-app) ───────────────────────────
 
-const MIN_VOICED_DURATION_MS = 2000;
-const MAX_RECORDING_MS = 15000;
+// VAD thresholds — aligned with pulseguard-app vad-thresholds.ts (P10-FINAL)
+const VAD_ENERGY_THRESHOLD = 0.015;
+const MIN_VOICED_DURATION_MS = 3000;
+const MAX_RECORDING_MS = 12000;
 const WARMUP_DURATION_MS = 3000;
 
 // ─── i18n (hardcoded FR, same as other guard-native screens) ───────
@@ -54,7 +57,7 @@ const STRINGS = {
   warmupThen: 'Ensuite, lisez cette phrase à voix haute :',
   carrierPhrase: (digits: string) =>
     `Pour vérifier ma voix, je lis les chiffres affichés à l'écran, lentement, un par un : ${digits}.`,
-  durationTarget: `Parlez pendant au moins ${MIN_VOICED_DURATION_MS / 1000}s (max ${MAX_RECORDING_MS / 1000}s)`,
+  durationTarget: `L'enregistrement s'arrête automatiquement après ${MIN_VOICED_DURATION_MS / 1000}s de parole.`,
   record: 'Enregistrer',
   warmupInProgress: 'Amorçage du micro…',
   warmupHint: 'Parlez naturellement — l\'enregistrement démarre automatiquement.',
@@ -65,6 +68,7 @@ const STRINGS = {
   interruptedFinal: 'L\'enregistrement a été interrompu à deux reprises. Veuillez réessayer en gardant l\'application au premier plan.',
   voicedDurationTimeout: 'Pas assez de voix détectée. Parlez plus clairement et réessayez.',
   stop: 'Arrêter',
+  autoStopHint: 'Arrêt automatique…',
   permissionRequired: 'Autorisation micro requise',
   permissionPrompt: 'Cette application a besoin d\'accéder au microphone pour l\'enregistrement vocal. Appuyez pour accorder l\'autorisation.',
   grantPermission: 'Accorder l\'autorisation',
@@ -74,7 +78,7 @@ const STRINGS = {
 
 // ─── Recording config for @siteed/audio-studio ─────────────────────
 
-function getRecordingConfig() {
+function getRecordingConfig(onAudioAnalysis?: (analysis: AudioAnalysis) => Promise<void>) {
   const base = {
     sampleRate: 48000 as const,
     channels: 1 as const,
@@ -83,6 +87,11 @@ function getRecordingConfig() {
     showNotification: false,
     maxDurationMs: MAX_RECORDING_MS,
     autoStopOnMaxDuration: true,
+    enableProcessing: true,
+    keepFullAnalysis: false,
+    segmentDurationMs: 100,
+    features: { rms: true },
+    onAudioAnalysis,
     output: {
       primary: { enabled: false },
       compressed: {
@@ -142,7 +151,15 @@ export function VoiceScreen({ sessionPublicId, session, onComplete, onError }: P
   const startTimeRef = useRef<number>(0);
   const retryRef = useRef<boolean>(false);
   const warmupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recordingConfigRef = useRef(getRecordingConfig());
+
+  // ── VAD refs (client-side voiced duration accumulator) ──
+  const voicedDurationMsRef = useRef(0);
+  const maxEnergyRef = useRef(1e-10);
+  const vadActiveRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const handleStopRef = useRef<() => void>(() => {});
+
+  const [voicedProgressMs, setVoicedProgressMs] = useState(0);
 
   const digits = challenge.sequence.join(', ');
   const carrierPhrase = STRINGS.carrierPhrase(digits);
@@ -254,17 +271,52 @@ export function VoiceScreen({ sessionPublicId, session, onComplete, onError }: P
       return; // Permission UI handles the next step
     }
 
+    // Reset VAD state
+    voicedDurationMsRef.current = 0;
+    maxEnergyRef.current = 1e-10;
+    vadActiveRef.current = false;
+    stoppingRef.current = false;
+    setVoicedProgressMs(0);
+
     setState('warming_up');
 
     try {
+      // Build config with VAD callback
+      const config = getRecordingConfig(async (analysis: AudioAnalysis) => {
+        if (!vadActiveRef.current || stoppingRef.current) return;
+
+        const segmentMs = analysis.segmentDurationMs || 100;
+        for (const dp of analysis.dataPoints) {
+          const rms = dp.rms ?? 0;
+          const energy = rms * rms;
+          if (energy > maxEnergyRef.current) {
+            maxEnergyRef.current = energy;
+          }
+          const normalizedEnergy = energy / (maxEnergyRef.current || 1e-10);
+          if (normalizedEnergy > VAD_ENERGY_THRESHOLD) {
+            voicedDurationMsRef.current += segmentMs;
+          }
+        }
+
+        setVoicedProgressMs(voicedDurationMsRef.current);
+
+        // Auto-stop when cumulative voiced duration reaches threshold
+        if (voicedDurationMsRef.current >= MIN_VOICED_DURATION_MS) {
+          stoppingRef.current = true;
+          vadActiveRef.current = false;
+          handleStopRef.current();
+        }
+      });
+
       // Start recording — audio-studio handles the actual capture
-      await recorder.startRecording(recordingConfigRef.current);
+      await recorder.startRecording(config);
 
       // Warm-up phase: wait WARMUP_DURATION_MS, then transition to "recording" state
       // The recording is already running, but we set startTimeRef here so
       // the RAN duration metric excludes warm-up time (same as pulseguard-app).
       warmupTimerRef.current = setTimeout(() => {
         startTimeRef.current = performance.now();
+        vadActiveRef.current = true;
         setState('recording');
       }, WARMUP_DURATION_MS);
     } catch (err) {
@@ -281,6 +333,7 @@ export function VoiceScreen({ sessionPublicId, session, onComplete, onError }: P
       warmupTimerRef.current = null;
     }
 
+    vadActiveRef.current = false;
     setState('processing');
 
     try {
@@ -293,9 +346,10 @@ export function VoiceScreen({ sessionPublicId, session, onComplete, onError }: P
       }
 
       const durationMs = performance.now() - startTimeRef.current;
+      const voicedMs = voicedDurationMsRef.current;
 
-      // Check minimum duration
-      if (durationMs < MIN_VOICED_DURATION_MS) {
+      // Check minimum voiced duration (VAD-based)
+      if (voicedMs < MIN_VOICED_DURATION_MS) {
         onError(STRINGS.voicedDurationTimeout);
         setState('idle');
         return;
@@ -320,7 +374,7 @@ export function VoiceScreen({ sessionPublicId, session, onComplete, onError }: P
         recorded: true,
         duration_ms: Math.round(durationMs),
         challenge_id: serverChallengeId || challenge.challenge_id,
-        quality: durationMs > 2000 ? 'ok' : 'low',
+        quality: voicedMs >= MIN_VOICED_DURATION_MS ? 'ok' : 'low',
       };
 
       const diagnostic: VoiceDiagnosticsSafe = {
@@ -354,6 +408,11 @@ export function VoiceScreen({ sessionPublicId, session, onComplete, onError }: P
       setState('idle');
     }
   }, [recorder, challenge, serverChallengeId, voiceNonce, readAudioAsBase64, onComplete, onError]);
+
+  // ── Keep handleStopRef in sync so the VAD callback can call it ──
+  useEffect(() => {
+    handleStopRef.current = handleStop;
+  }, [handleStop]);
 
   // ── Render ──
 
@@ -425,6 +484,10 @@ export function VoiceScreen({ sessionPublicId, session, onComplete, onError }: P
           <>
             <Text style={styles.statusLabel}>{STRINGS.recording}</Text>
             <Text style={styles.carrierPhrase}>{carrierPhrase}</Text>
+            <Text style={styles.vadProgress}>
+              {Math.min(voicedProgressMs, MIN_VOICED_DURATION_MS) / 1000}s / {MIN_VOICED_DURATION_MS / 1000}s
+            </Text>
+            <Text style={styles.muted}>{STRINGS.autoStopHint}</Text>
             <Pressable style={styles.btnStop} onPress={handleStop}>
               <Text style={styles.btnText}>{STRINGS.stop}</Text>
             </Pressable>
@@ -482,5 +545,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 24,
   },
+  vadProgress: { fontSize: 16, fontWeight: '600', color: '#208AEF', marginBottom: 8, textAlign: 'center' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
