@@ -6,6 +6,10 @@
  * Snapshot and voice challenge endpoints are out of scope for cognitive port.
  *
  * Pattern: fetch with AbortController timeout, typed errors, no PII in logs.
+ * All requests go through pgFetch() which centralizes:
+ *   - x-api-key header injection
+ *   - AbortController timeout
+ *   - Consistent error parsing → PulseGuardApiError
  *
  * @copyright (c) 2026 Benjamin BARRERE / IA SOLUTION
  * Patents Pending FR2514274 | FR2514546
@@ -42,6 +46,71 @@ export class PulseGuardApiError extends Error {
   }
 }
 
+// ─── Centralized fetch wrapper ────────────────────────────────────
+
+/**
+ * Shared fetch wrapper for all PulseGuard API calls.
+ *
+ * - Injects the x-api-key header on every request (the link-config route
+ *   ignores it, but enrollment and test-progress routes require it).
+ * - Sets up AbortController timeout.
+ * - Parses error responses into PulseGuardApiError.
+ *
+ * Using this wrapper ensures no future endpoint can accidentally omit
+ * the API key header.
+ */
+async function pgFetch(
+  url: string,
+  options: {
+    method: 'GET' | 'POST';
+    body?: unknown;
+  },
+): Promise<Response> {
+  if (!PULSEGUARD_API_KEY) {
+    console.warn(
+      '[PULSEGUARD_API] PULSEGUARD_API_KEY is empty — authenticated endpoints will fail. ' +
+      'Set GUARD_PULSEGUARD_API_KEY in your .env file and rebuild the app.',
+    );
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PULSEGUARD_REQUEST_TIMEOUT_MS);
+
+  const headers: Record<string, string> = {
+    'x-api-key': PULSEGUARD_API_KEY,
+  };
+
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: options.method,
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      let code = 'HTTP_ERROR';
+      let message = `PulseGuard API call failed: ${res.status}`;
+      try {
+        const body = (await res.json()) as { error?: string; message?: string };
+        if (body.error) code = body.error;
+        if (body.message) message = body.message;
+      } catch {
+        // body not JSON
+      }
+      throw new PulseGuardApiError(res.status, code, message);
+    }
+
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Link config resolution ───────────────────────────────────────
 
 /**
@@ -56,36 +125,9 @@ export class PulseGuardApiError extends Error {
 export async function fetchLinkConfig(
   token: string,
 ): Promise<PulseGuardLinkConfig> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PULSEGUARD_REQUEST_TIMEOUT_MS);
-
-  try {
-    const url = `${PULSEGUARD_LINK_CONFIG_PATH}?token=${encodeURIComponent(token)}`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'x-api-key': PULSEGUARD_API_KEY,
-      },
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      let code = 'HTTP_ERROR';
-      let message = `Link config fetch failed: ${res.status}`;
-      try {
-        const body = (await res.json()) as { error?: string; message?: string };
-        if (body.error) code = body.error;
-        if (body.message) message = body.message;
-      } catch {
-        // body not JSON
-      }
-      throw new PulseGuardApiError(res.status, code, message);
-    }
-
-    return res.json() as Promise<PulseGuardLinkConfig>;
-  } finally {
-    clearTimeout(timer);
-  }
+  const url = `${PULSEGUARD_LINK_CONFIG_PATH}?token=${encodeURIComponent(token)}`;
+  const res = await pgFetch(url, { method: 'GET' });
+  return res.json() as Promise<PulseGuardLinkConfig>;
 }
 
 // ─── Enrollment types ──────────────────────────────────────────────
@@ -141,37 +183,11 @@ export interface PulseGuardTestProgressPayload {
 export async function submitPulseGuardEnrollment(
   payload: PulseGuardEnrollmentPayload,
 ): Promise<PulseGuardEnrollmentResponse> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PULSEGUARD_REQUEST_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(PULSEGUARD_ENROLLMENT_PATH, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': PULSEGUARD_API_KEY,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      let code = 'HTTP_ERROR';
-      let message = `Enrollment submission failed: ${res.status}`;
-      try {
-        const body = (await res.json()) as { error?: string; message?: string };
-        if (body.error) code = body.error;
-        if (body.message) message = body.message;
-      } catch {
-        // body not JSON
-      }
-      throw new PulseGuardApiError(res.status, code, message);
-    }
-
-    return res.json() as Promise<PulseGuardEnrollmentResponse>;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await pgFetch(PULSEGUARD_ENROLLMENT_PATH, {
+    method: 'POST',
+    body: payload,
+  });
+  return res.json() as Promise<PulseGuardEnrollmentResponse>;
 }
 
 // ─── Test progress submission ──────────────────────────────────────
@@ -179,33 +195,8 @@ export async function submitPulseGuardEnrollment(
 export async function submitPulseGuardTestProgress(
   payload: PulseGuardTestProgressPayload,
 ): Promise<void> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PULSEGUARD_REQUEST_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(PULSEGUARD_ENROLLMENT_TEST_PROGRESS_PATH, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': PULSEGUARD_API_KEY,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      let code = 'HTTP_ERROR';
-      let message = `Test progress submission failed: ${res.status}`;
-      try {
-        const body = (await res.json()) as { error?: string; message?: string };
-        if (body.error) code = body.error;
-        if (body.message) message = body.message;
-      } catch {
-        // body not JSON
-      }
-      throw new PulseGuardApiError(res.status, code, message);
-    }
-  } finally {
-    clearTimeout(timer);
-  }
+  await pgFetch(PULSEGUARD_ENROLLMENT_TEST_PROGRESS_PATH, {
+    method: 'POST',
+    body: payload,
+  });
 }
