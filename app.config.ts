@@ -11,7 +11,7 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
-import type { ExpoConfig, ConfigContext } from '@expo/config';
+import type { ConfigContext, ExpoConfig } from '@expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -67,5 +67,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
+  },
+
+  extra: {
+    apiBaseUrl: process.env.GUARD_API_BASE_URL || 'https://hybrid-vector-api-m5xt.onrender.com',
+    pulseguardApiKey: process.env.GUARD_PULSEGUARD_API_KEY || '',
   },
 });
