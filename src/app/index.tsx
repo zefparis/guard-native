@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getLinkToken, saveLinkToken } from '@/api/linkToken';
 import type { PulseGuardLinkConfig } from '@/pulseguard/api';
 import { fetchLinkConfig, PulseGuardApiError } from '@/pulseguard/api';
+import { CognitiveEnrollment } from '@/screens/CognitiveEnrollment';
 
 function extractToken(input: string): string {
   const trimmed = input.trim();
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const [token, setToken] = useState('');
   const [testState, setTestState] = useState<TestState>({ status: 'idle' });
   const [storedToken, setStoredToken] = useState<string | null>(null);
+  const [enrollmentActive, setEnrollmentActive] = useState(false);
 
   const handleResolve = useCallback(async () => {
     const resolved = extractToken(token);
@@ -76,6 +78,15 @@ export default function HomeScreen() {
       setTestState({ status: 'error', message: 'No stored token found' });
     }
   }, []);
+
+  if (enrollmentActive && storedToken) {
+    return (
+      <CognitiveEnrollment
+        linkToken={storedToken}
+        onComplete={() => setEnrollmentActive(false)}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -133,6 +144,14 @@ export default function HomeScreen() {
             </View>
             {storedToken && (
               <Text style={styles.storedNote}>Token saved to secure storage</Text>
+            )}
+            {testState.data.cognitiveEnrollmentRequired && storedToken && (
+              <TouchableOpacity
+                style={styles.enrollmentBtn}
+                onPress={() => setEnrollmentActive(true)}
+              >
+                <Text style={styles.enrollmentBtnText}>Start Cognitive Enrollment</Text>
+              </TouchableOpacity>
             )}
           </View>
         )}
@@ -294,5 +313,18 @@ const styles = StyleSheet.create({
     color: '#bbb',
     marginTop: 24,
     textAlign: 'center',
+  },
+  enrollmentBtn: {
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  enrollmentBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
