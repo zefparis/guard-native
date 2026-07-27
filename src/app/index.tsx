@@ -14,6 +14,18 @@ import { getLinkToken, saveLinkToken } from '@/api/linkToken';
 import type { PulseGuardLinkConfig } from '@/pulseguard/api';
 import { fetchLinkConfig, PulseGuardApiError } from '@/pulseguard/api';
 
+function extractToken(input: string): string {
+  const trimmed = input.trim();
+  try {
+    const url = new URL(trimmed);
+    const tokenParam = url.searchParams.get('token');
+    if (tokenParam) return tokenParam;
+  } catch {
+    // Not a valid URL — assume raw token
+  }
+  return trimmed;
+}
+
 type TestState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -26,8 +38,8 @@ export default function HomeScreen() {
   const [storedToken, setStoredToken] = useState<string | null>(null);
 
   const handleResolve = useCallback(async () => {
-    const trimmed = token.trim();
-    if (!trimmed) {
+    const resolved = extractToken(token);
+    if (!resolved) {
       setTestState({ status: 'error', message: 'Enter a link token first' });
       return;
     }
@@ -35,11 +47,11 @@ export default function HomeScreen() {
     setTestState({ status: 'loading' });
 
     try {
-      const config = await fetchLinkConfig(trimmed);
+      const config = await fetchLinkConfig(resolved);
       const raw = JSON.stringify(config, null, 2);
       setTestState({ status: 'success', data: config, raw });
-      await saveLinkToken(trimmed);
-      setStoredToken(trimmed);
+      await saveLinkToken(resolved);
+      setStoredToken(resolved);
     } catch (err) {
       if (err instanceof PulseGuardApiError) {
         setTestState({
