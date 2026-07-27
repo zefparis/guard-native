@@ -1,0 +1,70 @@
+definitions:
+  - &default_working_dir /home/builder/repo
+  - &default_cache_key >-
+    node-{{ .os }}-{{ .channel }}-{{ checksum "package-lock.json" }}
+    -{{ checksum "package.json" }}
+
+workflows:
+  android-development:
+    name: Android Development Build
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    working_directory: *default_working_dir
+    cache:
+      cache_paths:
+        - ~/.npm
+        - ~/.gradle/caches
+      key: *default_cache_key
+    environment:
+      vars:
+        EXPO_TOKEN: $EXPO_TOKEN
+      node: 22
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+      - name: Expo prebuild (CNG)
+        script: |
+          npx expo prebuild --platform android --clean
+      - name: Build Android APK (debug)
+        script: |
+          cd android
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
+    publishing:
+      email:
+        recipients:
+          - $EMAIL
+
+  android-production:
+    name: Android Production Build
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    working_directory: *default_working_dir
+    cache:
+      cache_paths:
+        - ~/.npm
+        - ~/.gradle/caches
+      key: *default_cache_key
+    environment:
+      vars:
+        EXPO_TOKEN: $EXPO_TOKEN
+      node: 22
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+      - name: Expo prebuild (CNG)
+        script: |
+          npx expo prebuild --platform android --clean
+      - name: Build Android AAB (release)
+        script: |
+          cd android
+          ./gradlew bundleRelease
+    artifacts:
+      - android/app/build/outputs/bundle/release/*.aab
+    publishing:
+      email:
+        recipients:
+          - $EMAIL
