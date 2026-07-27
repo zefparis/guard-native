@@ -10,21 +10,21 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  NBACK_TRIALS,
-  generateNBackTrials,
-  evaluateNBackTrial,
-  computeNBackResult,
-  generateNBackPracticeTrials,
-} from '@/pulseguard/cognitive/nBackChallenge';
+import type { BehaviorSession } from '@/pulseguard/behavior/behaviorSession';
+import { recordNBackDecision, recordTaskStart } from '@/pulseguard/behavior/taskBehaviorRecorder';
 import type { NBackSignal } from '@/pulseguard/cognitive/cognitiveTypes';
 import type { NBackTrialConfig, NBackTrialResult } from '@/pulseguard/cognitive/nBackChallenge';
-import { recordTaskStart, recordNBackDecision } from '@/pulseguard/behavior/taskBehaviorRecorder';
-import type { BehaviorSession } from '@/pulseguard/behavior/behaviorSession';
+import {
+    NBACK_TRIALS,
+    computeNBackResult,
+    evaluateNBackTrial,
+    generateNBackPracticeTrials,
+    generateNBackTrials,
+} from '@/pulseguard/cognitive/nBackChallenge';
 
 type ScreenPhase = 'intro' | 'practice' | 'test';
 type FeedbackState = 'none' | 'correct' | 'incorrect' | 'answered';
@@ -168,11 +168,11 @@ export function NBackScreen({ session, onComplete }: Props) {
           <>
             <Text style={styles.instruction}>Does this match the previous letter?</Text>
             <View style={styles.buttonRow}>
-              <Pressable style={styles.btnSecondary} onPress={() => handleResponse(false)}>
-                <Text style={styles.btnSecondaryText}>NO</Text>
+              <Pressable style={styles.btnNo} onPress={() => handleResponse(false)}>
+                <Text style={styles.btnNoText}>NO</Text>
               </Pressable>
-              <Pressable style={styles.btn} onPress={() => handleResponse(true)}>
-                <Text style={styles.btnText}>YES</Text>
+              <Pressable style={styles.btnYes} onPress={() => handleResponse(true)}>
+                <Text style={styles.btnYesText}>YES</Text>
               </Pressable>
             </View>
           </>
@@ -226,15 +226,24 @@ const styles = StyleSheet.create({
   testContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   letter: { fontSize: 72, fontWeight: '700', marginBottom: 24 },
   instruction: { fontSize: 16, color: '#555', marginBottom: 20 },
-  buttonRow: { flexDirection: 'row', gap: 12 },
-  btnSecondary: {
+  buttonRow: { flexDirection: 'row', gap: 12, width: '100%' },
+  btnNo: {
     borderWidth: 1,
     borderColor: '#208AEF',
-    paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
   },
-  btnSecondaryText: { color: '#208AEF', fontSize: 16, fontWeight: '600' },
+  btnNoText: { color: '#208AEF', fontSize: 16, fontWeight: '600' },
+  btnYes: {
+    backgroundColor: '#208AEF',
+    paddingVertical: 14,
+    borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
+  },
+  btnYesText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   spacer: { fontSize: 16, color: 'transparent', minHeight: 24 },
   feedbackCorrect: { fontSize: 20, fontWeight: '700', color: '#22c55e' },
   feedbackIncorrect: { fontSize: 18, fontWeight: '600', color: '#ef4444', textAlign: 'center' },

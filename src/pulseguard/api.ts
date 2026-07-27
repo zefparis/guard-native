@@ -2,8 +2,7 @@
  * PulseGuard — API client
  *
  * Ported from pulseguard-app/src/pulseguard/api.ts.
- * Includes link-config, enrollment, and test-progress endpoints.
- * Snapshot and voice challenge endpoints are out of scope for cognitive port.
+ * Includes link-config, enrollment, test-progress, and voice-challenge endpoints.
  *
  * Pattern: fetch with AbortController timeout, typed errors, no PII in logs.
  * All requests go through pgFetch() which centralizes:
@@ -22,6 +21,7 @@ import {
     PULSEGUARD_LINK_CONFIG_PATH,
     PULSEGUARD_REQUEST_TIMEOUT_MS,
     PULSEGUARD_SOURCE,
+    VOICE_CHALLENGE_API_PATH,
 } from './constants';
 
 // ─── Types (identical to pulseguard-app) ──────────────────────────
@@ -199,4 +199,37 @@ export async function submitPulseGuardTestProgress(
     method: 'POST',
     body: payload,
   });
+}
+
+// ─── Voice challenge (anti-replay nonce) ───────────────────────────
+
+export interface VoiceChallengeResponse {
+  ok: boolean;
+  success: boolean;
+  nonce?: string;
+  challenge_id?: string;
+  expires_at?: number;
+  error?: string;
+}
+
+/**
+ * Request a voice challenge nonce from the backend before audio capture.
+ *
+ * Uses pgFetch to ensure x-api-key header is included (the voice-challenge
+ * endpoint requires it via apiKeyMiddleware).
+ *
+ * If this fails, the caller falls back to a local challenge_id (compat mode).
+ */
+export async function requestVoiceChallenge(
+  sessionPublicId: string,
+): Promise<VoiceChallengeResponse> {
+  const res = await pgFetch(VOICE_CHALLENGE_API_PATH, {
+    method: 'POST',
+    body: {
+      hcs_session_public_id: sessionPublicId,
+      tenant_id: 'edguard-demo',
+      source: PULSEGUARD_SOURCE,
+    },
+  });
+  return res.json() as Promise<VoiceChallengeResponse>;
 }

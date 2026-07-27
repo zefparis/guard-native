@@ -54,5 +54,8 @@ export const PULSEGUARD_ENROLLMENT_PATH = `${API_BASE_URL}/api/pulseguard/enroll
 /** API endpoint for publishing per-test enrollment progress events. */
 export const PULSEGUARD_ENROLLMENT_TEST_PROGRESS_PATH = `${API_BASE_URL}/api/pulseguard/enrollment/test-progress`;
 
+/** API endpoint for requesting a voice challenge nonce (anti-replay). */
+export const VOICE_CHALLENGE_API_PATH = `${API_BASE_URL}/api/demoguard/voice-challenge`;
+
 /** Source identifier sent in payloads. */
 export const PULSEGUARD_SOURCE = 'pulseguard_mobile' as const;

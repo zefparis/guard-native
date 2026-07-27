@@ -1,11 +1,9 @@
 /**
  * PulseGuard — Cognitive Enrollment Orchestrator (React Native)
  *
- * Runs the 5-test cognitive battery (reflex → stroop → digit span →
- * n-back → trail tap) with behavior recording, computes the cognitive
- * summary, and submits the enrollment payload to the backend.
- *
- * Vocal RAN is out of scope for this port — vocal_ran signal is null.
+ * Runs the 6-test cognitive battery (reflex → stroop → digit span →
+ * n-back → trail tap → vocal RAN) with behavior recording, computes
+ * the cognitive summary, and submits the enrollment payload to the backend.
  *
  * Ported from pulseguard-app/src/components/PulseGuardEnrollment.tsx.
  *
@@ -13,37 +11,40 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+    submitPulseGuardEnrollment,
+    submitPulseGuardTestProgress,
+    type PulseGuardApiError,
+    type PulseGuardEnrollmentPayload,
+} from '@/pulseguard/api';
 import { BehaviorSession } from '@/pulseguard/behavior/behaviorSession';
 import { computeCognitiveSummary } from '@/pulseguard/cognitive/cognitiveScoring';
 import type {
-  CognitiveSignals,
-  CognitiveQuality,
-  ReflexSignal,
-  StroopSignal,
-  DigitSpanSignal,
-  NBackSignal,
-  TrailTapSignal,
+    CognitiveQuality,
+    CognitiveSignals,
+    DigitSpanSignal,
+    NBackSignal,
+    ReflexSignal,
+    StroopSignal,
+    TrailTapSignal,
+    VocalRanSignal,
 } from '@/pulseguard/cognitive/cognitiveTypes';
-import { ReflexScreen } from '@/screens/ReflexScreen';
-import { StroopScreen } from '@/screens/StroopScreen';
+import { PULSEGUARD_SOURCE } from '@/pulseguard/constants';
+import type { DemoGuardVoiceSignal, VoiceDiagnosticsSafe } from '@/pulseguard/types';
 import { DigitSpanScreen } from '@/screens/DigitSpanScreen';
 import { NBackScreen } from '@/screens/NBackScreen';
+import { ReflexScreen } from '@/screens/ReflexScreen';
+import { StroopScreen } from '@/screens/StroopScreen';
 import { TrailTapScreen } from '@/screens/TrailTapScreen';
-import {
-  submitPulseGuardEnrollment,
-  submitPulseGuardTestProgress,
-  type PulseGuardEnrollmentPayload,
-  type PulseGuardApiError,
-} from '@/pulseguard/api';
-import { PULSEGUARD_SOURCE } from '@/pulseguard/constants';
+import { VoiceScreen } from '@/screens/VoiceScreen';
 
 // ─── Per-test qualitative summaries ────────────────────────────────
 
-const TEST_ORDER = ['reflex', 'stroop', 'digit_span', 'n_back', 'trail_tap'] as const;
+const TEST_ORDER = ['reflex', 'stroop', 'digit_span', 'n_back', 'trail_tap', 'vocal_ran'] as const;
 const TOTAL_TESTS = TEST_ORDER.length;
 
 function summarizeReflex(s: ReflexSignal): string {
@@ -74,6 +75,12 @@ function summarizeTrailTap(s: TrailTapSignal): string {
   if (s.completion_ms < 15000) return 'fluid_execution';
   if (s.completion_ms <= 25000) return 'average_execution';
   return 'slow_execution';
+}
+
+function summarizeVocalRan(s: VocalRanSignal): string {
+  if (s.quality === 'ok') return 'clear_voice';
+  if (s.quality === 'review') return 'voice_to_verify';
+  return 'voice_issue';
 }
 
 function sendTestProgress(
@@ -107,6 +114,7 @@ type EnrollmentPhase =
   | 'digit_span'
   | 'n_back'
   | 'trail_tap'
+  | 'vocal_ran'
   | 'submitting'
   | 'done'
   | 'error';
@@ -129,6 +137,11 @@ export function CognitiveEnrollment({ linkToken, onComplete }: Props) {
     vocal_ran: null,
     summary: null,
   });
+  const voiceDiagnosticsRef = useRef<VoiceDiagnosticsSafe | null>(null);
+  const voiceB64Ref = useRef<string | null>(null);
+  const voiceMimetypeRef = useRef<string | null>(null);
+  const voiceNonceRef = useRef<string | null>(null);
+  const voiceChallengeIdRef = useRef<string | null>(null);
 
   const startEnrollment = () => {
     sessionRef.current = new BehaviorSession();
@@ -141,6 +154,11 @@ export function CognitiveEnrollment({ linkToken, onComplete }: Props) {
       vocal_ran: null,
       summary: null,
     };
+    voiceDiagnosticsRef.current = null;
+    voiceB64Ref.current = null;
+    voiceMimetypeRef.current = null;
+    voiceNonceRef.current = null;
+    voiceChallengeIdRef.current = null;
     setPhase('reflex');
   };
 
@@ -170,6 +188,15 @@ export function CognitiveEnrollment({ linkToken, onComplete }: Props) {
       },
       behavior,
       touchDiagnosticsBehavior,
+      voice_diagnostics: voiceDiagnosticsRef.current,
+      sensitive: voiceB64Ref.current
+        ? {
+            voice_b64: voiceB64Ref.current,
+            voice_mimetype: voiceMimetypeRef.current ?? undefined,
+            voice_nonce: voiceNonceRef.current ?? undefined,
+            voice_challenge_id: voiceChallengeIdRef.current ?? undefined,
+          }
+        : undefined,
     };
 
     try {
@@ -213,6 +240,25 @@ export function CognitiveEnrollment({ linkToken, onComplete }: Props) {
   const onTrailTapComplete = (signal: TrailTapSignal) => {
     signalsRef.current.trail_tap = signal;
     sendTestProgress('trail_tap', 5, signal.quality, summarizeTrailTap(signal), linkToken);
+    setPhase('vocal_ran');
+  };
+
+  const onVocalRanComplete = (
+    _voice: DemoGuardVoiceSignal,
+    diagnostic: VoiceDiagnosticsSafe | null,
+    voiceB64: string | null,
+    vocalRan: VocalRanSignal,
+    voiceMimetype: string | null,
+    voiceNonce: string | null,
+    voiceChallengeId: string | null,
+  ) => {
+    signalsRef.current.vocal_ran = vocalRan;
+    sendTestProgress('vocal_ran', 6, vocalRan.quality, summarizeVocalRan(vocalRan), linkToken);
+    voiceDiagnosticsRef.current = diagnostic;
+    voiceB64Ref.current = voiceB64;
+    voiceMimetypeRef.current = voiceMimetype;
+    voiceNonceRef.current = voiceNonce;
+    voiceChallengeIdRef.current = voiceChallengeId;
     submitEnrollment();
   };
 
@@ -230,8 +276,8 @@ export function CognitiveEnrollment({ linkToken, onComplete }: Props) {
           <Text style={styles.emoji}>🧠</Text>
           <Text style={styles.heading}>Cognitive Enrollment</Text>
           <Text style={styles.description}>
-            You will complete 5 short cognitive tests: Reflex, Stroop, Digit Span, N-Back, and Trail Tap.
-            This takes about 3-4 minutes. Find a quiet place and focus.
+            You will complete 6 short cognitive tests: Reflex, Stroop, Digit Span, N-Back, Trail Tap, and a Voice test.
+            This takes about 4-5 minutes. Find a quiet place and focus.
           </Text>
           <Pressable style={styles.btn} onPress={startEnrollment}>
             <Text style={styles.btnText}>Start</Text>
@@ -299,6 +345,15 @@ export function CognitiveEnrollment({ linkToken, onComplete }: Props) {
       return <NBackScreen session={session} onComplete={onNBackComplete} onError={onError} />;
     case 'trail_tap':
       return <TrailTapScreen session={session} onComplete={onTrailTapComplete} onError={onError} />;
+    case 'vocal_ran':
+      return (
+        <VoiceScreen
+          sessionPublicId={`pg_${linkToken.slice(-12)}`}
+          session={session}
+          onComplete={onVocalRanComplete}
+          onError={onError}
+        />
+      );
     default:
       return null;
   }
