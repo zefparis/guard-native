@@ -17,11 +17,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 import {
-  API_BASE_URL,
-  PULSEGUARD_API_KEY,
-  PULSEGUARD_API_PATH,
-  PULSEGUARD_SOURCE,
-  PULSEGUARD_VERSION,
+    PULSEGUARD_API_KEY,
+    PULSEGUARD_API_PATH,
+    PULSEGUARD_SOURCE,
+    PULSEGUARD_VERSION
 } from '@/pulseguard/constants';
 
 export type ServiceStatus = 'idle' | 'starting' | 'running' | 'error' | 'stopped';
@@ -46,7 +45,7 @@ export function useForegroundService() {
       setError(null);
 
       const { default: ForegroundServiceModule } = await import(
-        '../../modules/expo-foreground-service'
+        'expo-foreground-service'
       );
 
       await ForegroundServiceModule.startService({
@@ -76,7 +75,7 @@ export function useForegroundService() {
 
     try {
       const { default: ForegroundServiceModule } = await import(
-        '../../modules/expo-foreground-service'
+        'expo-foreground-service'
       );
       await ForegroundServiceModule.stopService();
       startedRef.current = false;
@@ -92,7 +91,7 @@ export function useForegroundService() {
     if (Platform.OS !== 'android') return false;
     try {
       const { default: ForegroundServiceModule } = await import(
-        '../../modules/expo-foreground-service'
+        'expo-foreground-service'
       );
       return await ForegroundServiceModule.isServiceRunning();
     } catch {
