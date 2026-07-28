@@ -15,7 +15,9 @@
 
 import { useEffect, useState } from 'react';
 import {
+    Alert,
     BackHandler,
+    PermissionsAndroid,
     Platform,
     ScrollView,
     StyleSheet,
@@ -42,8 +44,40 @@ export function ConsentScreen({ onConsent, onDecline }: Props) {
     return () => subscription.remove();
   }, []);
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     setRequestingPermissions(true);
+
+    if (Platform.OS === 'android') {
+      try {
+        const results = await PermissionsAndroid.requestMultiple([
+          'android.permission.POST_NOTIFICATIONS',
+          'android.permission.ACTIVITY_RECOGNITION',
+        ]);
+
+        const activityRecognitionGranted =
+          results['android.permission.ACTIVITY_RECOGNITION'] ===
+          PermissionsAndroid.RESULTS.GRANTED;
+
+        if (!activityRecognitionGranted) {
+          setRequestingPermissions(false);
+          Alert.alert(
+            'Permission requise',
+            "PulseGuard a besoin de la permission « Activité physique » pour le monitoring en arrière-plan. Sans cette permission, le service de surveillance ne peut pas démarrer.",
+            [{ text: 'OK' }],
+          );
+          return;
+        }
+      } catch {
+        setRequestingPermissions(false);
+        Alert.alert(
+          'Erreur',
+          "Impossible de demander les permissions nécessaires. Réessayez.",
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+    }
+
     onConsent();
   };
 
