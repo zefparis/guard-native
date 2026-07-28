@@ -14,6 +14,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getLinkToken, saveLinkToken } from '@/api/linkToken';
 import type { PulseGuardLinkConfig } from '@/pulseguard/api';
 import { fetchLinkConfig, PulseGuardApiError } from '@/pulseguard/api';
+import {
+    PULSEGUARD_FALLBACK_CAPTURE_WINDOW_SEC,
+    PULSEGUARD_FALLBACK_CHECK_FREQUENCY_MS,
+} from '@/pulseguard/constants';
 import { CognitiveEnrollment } from '@/screens/CognitiveEnrollment';
 import { ConsentScreen } from '@/screens/ConsentScreen';
 import { WaitingScreen } from '@/screens/WaitingScreen';
@@ -144,11 +148,9 @@ export default function HomeScreen() {
 
   // ── Waiting / monitoring mode ──
   if (waitingActive && storedToken) {
-    // TEMP_TEST: override to 30s / 5s for device testing. Remove before production.
-    const TEMP_TEST_CHECK_FREQ = 30_000;
-    const TEMP_TEST_CAPTURE_WIN = 5;
-    const checkFreq = TEMP_TEST_CHECK_FREQ;
-    const captureWin = TEMP_TEST_CAPTURE_WIN;
+    const linkConfig = testState.status === 'success' ? testState.data : null;
+    const checkFreq = linkConfig?.checkFrequencyMs ?? PULSEGUARD_FALLBACK_CHECK_FREQUENCY_MS;
+    const captureWin = linkConfig?.captureWindowSec ?? PULSEGUARD_FALLBACK_CAPTURE_WINDOW_SEC;
     return (
       <WaitingScreen
         linkToken={storedToken}
