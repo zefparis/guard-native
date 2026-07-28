@@ -292,6 +292,7 @@ class PulseGuardForegroundService : Service(), SensorEventListener {
     // ── Heartbeat HTTP ──
 
     private fun sendHeartbeat() {
+        Log.d(TAG, "sendHeartbeat() triggered — preparing payload")
         try {
             val nowIso = java.time.Instant.now().toString()
 
@@ -337,15 +338,25 @@ class PulseGuardForegroundService : Service(), SensorEventListener {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    Log.i(TAG, "Heartbeat sent successfully")
-                } else {
-                    Log.w(TAG, "Heartbeat failed: HTTP ${response.code}")
+            Log.d(TAG, "Sending heartbeat to $apiUrl (apiKey=${apiKey.take(8)}..., session=$hcsSessionId)")
+
+            httpClient.newCall(request).enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                    Log.e(TAG, "Heartbeat HTTP failure: ${e.message}")
                 }
-            }
+
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    response.use {
+                        if (it.isSuccessful) {
+                            Log.i(TAG, "Heartbeat sent successfully (HTTP ${it.code})")
+                        } else {
+                            Log.w(TAG, "Heartbeat failed: HTTP ${it.code} — ${it.body?.string()?.take(200)}")
+                        }
+                    }
+                }
+            })
         } catch (e: Exception) {
-            Log.e(TAG, "Heartbeat error: ${e.message}")
+            Log.e(TAG, "Heartbeat error: ${e.message}", e)
         }
     }
 }
