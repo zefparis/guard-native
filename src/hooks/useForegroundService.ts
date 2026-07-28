@@ -16,6 +16,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
+import ExpoForegroundServiceModule from 'expo-foreground-service';
+
 import {
     PULSEGUARD_API_KEY,
     PULSEGUARD_API_PATH,
@@ -44,11 +46,7 @@ export function useForegroundService() {
       setStatus('starting');
       setError(null);
 
-      const { default: ForegroundServiceModule } = await import(
-        'expo-foreground-service'
-      );
-
-      await ForegroundServiceModule.startService({
+      await ExpoForegroundServiceModule.startService({
         apiUrl: PULSEGUARD_API_PATH,
         apiKey: PULSEGUARD_API_KEY,
         linkToken: config.linkToken,
@@ -74,10 +72,7 @@ export function useForegroundService() {
     if (!startedRef.current) return;
 
     try {
-      const { default: ForegroundServiceModule } = await import(
-        'expo-foreground-service'
-      );
-      await ForegroundServiceModule.stopService();
+      await ExpoForegroundServiceModule.stopService();
       startedRef.current = false;
       setStatus('stopped');
       console.info('[ForegroundService] Service stopped');
@@ -90,10 +85,7 @@ export function useForegroundService() {
   const isRunning = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return false;
     try {
-      const { default: ForegroundServiceModule } = await import(
-        'expo-foreground-service'
-      );
-      return await ForegroundServiceModule.isServiceRunning();
+      return await ExpoForegroundServiceModule.isServiceRunning();
     } catch {
       return false;
     }
