@@ -40,6 +40,7 @@ class ForegroundServiceModule : Module() {
             } else {
                 context.startService(intent)
             }
+            Unit
         }
 
         AsyncFunction("stopService") {
@@ -47,6 +48,7 @@ class ForegroundServiceModule : Module() {
                 ?: throw Exception("React context is null")
             val intent = Intent(context, PulseGuardForegroundService::class.java)
             context.stopService(intent)
+            Unit
         }
 
         AsyncFunction("isServiceRunning") {
