@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useForegroundService } from '@/hooks/useForegroundService';
 import { useLastCheckPersistence } from '@/hooks/useLastCheckPersistence';
 import {
     PulseGuardApiError,
@@ -63,6 +64,7 @@ interface Props {
   checkFrequencyMs: number;
   captureWindowSec: number;
   onRetestRequired: () => void;
+  foregroundOnly?: boolean;
 }
 
 type WaitPhase = 'waiting' | 'checking';
@@ -72,6 +74,7 @@ export function WaitingScreen({
   checkFrequencyMs,
   captureWindowSec,
   onRetestRequired,
+  foregroundOnly = false,
 }: Props) {
   const [phase, setPhase] = useState<WaitPhase>('waiting');
   const [checksSent, setChecksSent] = useState(0);
@@ -90,6 +93,21 @@ export function WaitingScreen({
   const onRetestRequiredRef = useRef(onRetestRequired);
 
   const { persist: persistLastCheck, read: readLastCheck } = useLastCheckPersistence();
+  const { startService, stopService } = useForegroundService();
+
+  // ── Start native foreground service for background heartbeats ──
+  // Skip if user declined consent (foreground-only mode)
+  useEffect(() => {
+    if (foregroundOnly) return;
+    void startService({
+      linkToken,
+      hcsSessionPublicId: `pg_${linkToken.slice(-12)}`,
+      checkFrequencyMs,
+    });
+    return () => {
+      void stopService();
+    };
+  }, [linkToken, checkFrequencyMs, startService, stopService, foregroundOnly]);
 
   // Keep refs in sync with latest props
   useEffect(() => {
@@ -302,7 +320,9 @@ export function WaitingScreen({
 
         {Platform.OS === 'android' && (
           <Text style={styles.platformNote}>
-            Le monitoring fonctionne uniquement au premier plan.
+            {foregroundOnly
+              ? 'Monitoring au premier plan uniquement.'
+              : 'Monitoring actif au premier plan et en arrière-plan (service natif).'}
           </Text>
         )}
       </View>

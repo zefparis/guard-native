@@ -14,6 +14,7 @@ import { getLinkToken, saveLinkToken } from '@/api/linkToken';
 import type { PulseGuardLinkConfig } from '@/pulseguard/api';
 import { fetchLinkConfig, PulseGuardApiError } from '@/pulseguard/api';
 import { CognitiveEnrollment } from '@/screens/CognitiveEnrollment';
+import { ConsentScreen } from '@/screens/ConsentScreen';
 import { WaitingScreen } from '@/screens/WaitingScreen';
 
 function extractToken(input: string): string {
@@ -41,6 +42,8 @@ export default function HomeScreen() {
   const [enrollmentActive, setEnrollmentActive] = useState(false);
   const [waitingActive, setWaitingActive] = useState(false);
   const [retestActive, setRetestActive] = useState(false);
+  const [consentActive, setConsentActive] = useState(false);
+  const [foregroundOnly, setForegroundOnly] = useState(false);
 
   const handleResolve = useCallback(async () => {
     const resolved = extractToken(token);
@@ -82,13 +85,30 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // ── Enrollment → on success, transition to waiting (not back to token screen) ──
+  // ── Enrollment → on success, transition to consent screen ──
   if (enrollmentActive && storedToken) {
     return (
       <CognitiveEnrollment
         linkToken={storedToken}
         onComplete={() => {
           setEnrollmentActive(false);
+          setConsentActive(true);
+        }}
+      />
+    );
+  }
+
+  // ── Consent for background monitoring → on accept, go to waiting ──
+  if (consentActive && storedToken) {
+    return (
+      <ConsentScreen
+        onConsent={() => {
+          setConsentActive(false);
+          setWaitingActive(true);
+        }}
+        onDecline={() => {
+          setConsentActive(false);
+          setForegroundOnly(true);
           setWaitingActive(true);
         }}
       />
@@ -120,6 +140,7 @@ export default function HomeScreen() {
         linkToken={storedToken}
         checkFrequencyMs={checkFreq}
         captureWindowSec={captureWin}
+        foregroundOnly={foregroundOnly}
         onRetestRequired={() => {
           setWaitingActive(false);
           setRetestActive(true);

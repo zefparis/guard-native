@@ -12,8 +12,10 @@
  */
 
 import type { ConfigContext, ExpoConfig } from '@expo/config';
+import withForegroundService from './plugins/withForegroundService.js';
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const baseConfig: ExpoConfig = {
   ...config,
   name: 'GuardNative',
   slug: 'guard-native',
@@ -43,6 +45,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     predictiveBackGestureEnabled: false,
     permissions: [
       'android.permission.RECORD_AUDIO',
+      'android.permission.FOREGROUND_SERVICE',
+      'android.permission.FOREGROUND_SERVICE_HEALTH',
+      'android.permission.POST_NOTIFICATIONS',
+      'android.permission.ACTIVITY_RECOGNITION',
     ],
   },
 
@@ -86,4 +92,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     apiBaseUrl: process.env.GUARD_API_BASE_URL || 'https://hybrid-vector-api-m5xt.onrender.com',
     pulseguardApiKey: process.env.GUARD_PULSEGUARD_API_KEY || '',
   },
-});
+  };
+
+  return withForegroundService(baseConfig);
+};

@@ -1,5 +1,5 @@
 /**
- * withForegroundService — Expo config plugin
+ * withForegroundService — Expo config plugin (JS version for require())
  *
  * Adds Android permissions and service declaration to AndroidManifest.xml
  * for the PulseGuard foreground service (type: health).
@@ -22,10 +22,9 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
-import type { ConfigPlugin } from '@expo/config-plugins';
-import { AndroidConfig, withAndroidManifest } from '@expo/config-plugins';
+const { withAndroidManifest, AndroidConfig } = require('@expo/config-plugins');
 
-const REQUIRED_PERMISSIONS: string[] = [
+const REQUIRED_PERMISSIONS = [
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_HEALTH',
   'android.permission.POST_NOTIFICATIONS',
@@ -34,7 +33,7 @@ const REQUIRED_PERMISSIONS: string[] = [
 
 const SERVICE_NAME = 'expo.modules.foregroundservice.PulseGuardForegroundService';
 
-const withForegroundService: ConfigPlugin = (config) => {
+const withForegroundService = (config) => {
   return withAndroidManifest(config, (config) => {
     const androidManifest = config.modResults;
 
@@ -45,7 +44,7 @@ const withForegroundService: ConfigPlugin = (config) => {
 
     for (const permission of REQUIRED_PERMISSIONS) {
       const exists = androidManifest.manifest['uses-permission'].some(
-        (item) => item.$?.['android:name'] === permission,
+        (item) => item.$ && item.$['android:name'] === permission,
       );
       if (!exists) {
         androidManifest.manifest['uses-permission'].push({
@@ -63,7 +62,7 @@ const withForegroundService: ConfigPlugin = (config) => {
     }
 
     const serviceExists = mainApplication.service.some(
-      (svc) => svc.$?.['android:name'] === SERVICE_NAME,
+      (svc) => svc.$ && svc.$['android:name'] === SERVICE_NAME,
     );
 
     if (!serviceExists) {
@@ -81,4 +80,4 @@ const withForegroundService: ConfigPlugin = (config) => {
   });
 };
 
-export default withForegroundService;
+module.exports = withForegroundService;
