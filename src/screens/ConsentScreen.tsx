@@ -45,20 +45,33 @@ export function ConsentScreen({ onConsent, onDecline }: Props) {
   }, []);
 
   const handleAccept = async () => {
+    console.log('[ConsentScreen] handleAccept() called');
     setRequestingPermissions(true);
 
     if (Platform.OS === 'android') {
       try {
+        // Check current permission state before requesting
+        const hasActivityRec = await PermissionsAndroid.check(
+          'android.permission.ACTIVITY_RECOGNITION',
+        );
+        const hasPostNotif = await PermissionsAndroid.check(
+          'android.permission.POST_NOTIFICATIONS',
+        );
+        console.log('[ConsentScreen] Pre-request state: ACTIVITY_RECOGNITION=%s, POST_NOTIFICATIONS=%s', hasActivityRec, hasPostNotif);
+
+        console.log('[ConsentScreen] Calling PermissionsAndroid.requestMultiple()...');
         const results = await PermissionsAndroid.requestMultiple([
           'android.permission.POST_NOTIFICATIONS',
           'android.permission.ACTIVITY_RECOGNITION',
         ]);
+        console.log('[ConsentScreen] requestMultiple results:', JSON.stringify(results));
 
         const activityRecognitionGranted =
           results['android.permission.ACTIVITY_RECOGNITION'] ===
           PermissionsAndroid.RESULTS.GRANTED;
 
         if (!activityRecognitionGranted) {
+          console.log('[ConsentScreen] ACTIVITY_RECOGNITION NOT granted — aborting');
           setRequestingPermissions(false);
           Alert.alert(
             'Permission requise',
@@ -67,7 +80,9 @@ export function ConsentScreen({ onConsent, onDecline }: Props) {
           );
           return;
         }
-      } catch {
+        console.log('[ConsentScreen] ACTIVITY_RECOGNITION granted — proceeding');
+      } catch (err) {
+        console.error('[ConsentScreen] Permission request error:', err);
         setRequestingPermissions(false);
         Alert.alert(
           'Erreur',
@@ -78,6 +93,7 @@ export function ConsentScreen({ onConsent, onDecline }: Props) {
       }
     }
 
+    console.log('[ConsentScreen] Calling onConsent()');
     onConsent();
   };
 
