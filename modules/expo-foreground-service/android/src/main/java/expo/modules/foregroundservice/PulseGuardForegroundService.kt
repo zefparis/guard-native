@@ -298,6 +298,7 @@ class PulseGuardForegroundService : Service(), SensorEventListener {
 
             // Compute motion summary from accumulated sensor readings
             val motion = computeMotionSummary()
+            Log.d(TAG, "MotionSummary: state=${motion.motionState}, accelVar=${motion.accelVariance}, gyroVar=${motion.gyroVariance}, accelMean=${motion.accelMean}, gyroMean=${motion.gyroMean}, samples=${motion.samples}")
             resetMotionBuffers()
 
             val signals = JSONObject().apply {
