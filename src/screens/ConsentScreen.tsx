@@ -13,14 +13,15 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Linking,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    BackHandler,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -32,34 +33,23 @@ interface Props {
 export function ConsentScreen({ onConsent, onDecline }: Props) {
   const [requestingPermissions, setRequestingPermissions] = useState(false);
 
-  const handleAccept = async () => {
-    if (Platform.OS !== 'android') {
-      onConsent();
-      return;
-    }
+  // Prevent Android back button from destroying app state during consent flow
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => true, // swallow back press — user must choose accept/decline
+    );
+    return () => subscription.remove();
+  }, []);
 
-    try {
-      setRequestingPermissions(true);
-
-      // Request POST_NOTIFICATIONS (Android 13+)
-      // We use Linking to open app settings if the user previously denied.
-      // The actual permission request happens via the notification channel
-      // creation in the foreground service — Android auto-prompts on first
-      // notification post if not already granted.
-      //
-      // For ACTIVITY_RECOGNITION, we don't need it in milestone 1 (heartbeat
-      // only, no motion sensors). It's declared in the manifest for milestone 2.
-      // We'll request it when we add sensor collection.
-
-      onConsent();
-    } finally {
-      setRequestingPermissions(false);
-    }
+  const handleAccept = () => {
+    setRequestingPermissions(true);
+    onConsent();
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.emoji}>🫀</Text>
         <Text style={styles.title}>PulseGuard</Text>
         <Text style={styles.subtitle}>Monitoring en arrière-plan</Text>
@@ -124,7 +114,7 @@ export function ConsentScreen({ onConsent, onDecline }: Props) {
             C'est une exigence d'Android pour les services actifs en arrière-plan.
           </Text>
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -134,10 +124,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  content: {
-    flex: 1,
+  scrollContent: {
     paddingHorizontal: 24,
     paddingVertical: 16,
+    flexGrow: 1,
   },
   emoji: {
     fontSize: 48,

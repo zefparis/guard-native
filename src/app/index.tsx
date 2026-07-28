@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
+    BackHandler,
     Platform,
     ScrollView,
     StyleSheet,
@@ -44,6 +45,19 @@ export default function HomeScreen() {
   const [retestActive, setRetestActive] = useState(false);
   const [consentActive, setConsentActive] = useState(false);
   const [foregroundOnly, setForegroundOnly] = useState(false);
+
+  // ── Prevent Android back button from destroying app state during active flows ──
+  // When enrollment, consent, waiting, or retest is active, swallow the back press
+  // so the app doesn't exit and lose all React state.
+  const isInActiveFlow = enrollmentActive || consentActive || waitingActive || retestActive;
+  useEffect(() => {
+    if (!isInActiveFlow) return;
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => true, // prevent default — don't exit app during active flow
+    );
+    return () => subscription.remove();
+  }, [isInActiveFlow]);
 
   const handleResolve = useCallback(async () => {
     const resolved = extractToken(token);
